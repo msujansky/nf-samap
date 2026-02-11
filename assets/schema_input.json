@@ -1,8 +1,8 @@
 {
     "$schema": "https://json-schema.org/draft/2020-12/schema",
-    "$id": "https://raw.githubusercontent.com/nf-core/scscape/master/assets/schema_input.json",
-    "title": "nf-core/scscape pipeline - params.input schema",
-    "description": "Schema for the file provided with params.input",
+    "$id": "https://raw.githubusercontent.com/nf-core/scscape/master/assets/schema_input_blast.json",
+    "title": "BLAST-only input schema",
+    "description": "Schema for BLAST map generation",
     "type": "array",
     "items": {
         "type": "object",
@@ -11,28 +11,11 @@
                 "type": "string",
                 "meta": ["id"]
             },
-            "annotation": {
-                "type": "string",
-                "meta": ["annotation"]
-            },
-            "type": {
-                "type": "string",
-                "meta": ["type"]
-            },
-            "mapping_dict": {
-                "type": "string",
-                "meta": ["map_dict"],
-                "format": "file-path"
-            },
-            "so": {
-                "type": "string",
-                "format": "file-path"
-            },
             "fasta": {
                 "type": "string",
                 "format": "file-path"
             }
         },
-        "required": ["id", "so", "fasta"]
+        "required": ["id", "fasta"]
     }
 }

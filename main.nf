@@ -46,13 +46,7 @@
  */
 
 // Import the required modules 
-include { PREPROCESS_SEURAT_OBJECT } from './modules/preprocess_seurat_object.nf'
-include { PREPROCESS_ANNDATA_OBJECT } from './modules/preprocess_anndata_object.nf'
 include { RUN_BLAST_PAIR } from './modules/run_blast_pair.nf'
-include { LOAD_SAMS } from './modules/load_sams.nf'
-include { BUILD_SAMAP } from './modules/build_samap.nf'
-include { RUN_SAMAP } from './modules/run_samap.nf'
-include { VISUALIZE_SAMAP } from './modules/visualize_samap.nf'
 include { validateParameters; paramsHelp; samplesheetToList } from 'plugin/nf-schema'
 
 workflow {
@@ -68,134 +62,28 @@ workflow {
         error "Missing required file: sample sheet '${params.sample_sheet}'"
     }
     
-    // Reformat Sample_Sheet to remove necessity of Sample_Sheet for downstream processes
+    // Reformat Sample_Sheet
     sample_sheet
         .map { file -> 
             def list = samplesheetToList(file.toString(), "./nf-samap/assets/schema_input.json")
             return list
         }
         .flatten()
-        .collate(3)
+        .collate(2)
         .set { ch_samples }
-
-    // Grab all SO paths to extract relevant info
-    SO = ch_samples
-    .map { tuple ->
-        def (meta, SO, fasta) = tuple
-        return [meta, SO]
-    }
-    SO.view()
-
-    //PREPROCESS_SEURAT_OBJECT module here
-    PREPROCESS_SEURAT_OBJECT(
-        run_id_ch,
-        SO
-    )
-
-    anndata_parts = PREPROCESS_SEURAT_OBJECT.out.seurat_data
-    anndata_parts.view()
-
-    //PREPROCESS_ANNDATA_OBJECT module here
-    PREPROCESS_ANNDATA_OBJECT(
-        run_id_ch,
-        anndata_parts
-    )
-    anndata = PREPROCESS_ANNDATA_OBJECT.out.anndata
-    anndata.view()
 
  
      // Generate unique unordered sample pairs
     pairs_channel = ch_samples
         .combine(ch_samples)
-        .filter { a,b,c,d,e,f -> a.id < d.id }  
+        .filter { a, b, c, d -> a.id < c.id }
 
     pairs_channel.view()
 
-    // Run BLAST or load precomputed map files 
-   if (params.maps_dir) {
-        // Use user-supplied BLAST maps
-        maps_dir = Channel.fromPath(params.maps_dir)
-    } else {
-        // Run BLAST and extract parent maps directory
         RUN_BLAST_PAIR(
             run_id_ch,
-            pairs_channel.map{[it[0], it[3], it[2], it[5]]}
+            pairs_channel.map{[it[0], it[2], it[1], it[3]]}
         )
         // Set path to maps from BLAST results
     maps_dir = RUN_BLAST_PAIR.out.maps
-    }
-
-    // Grab all id values, to be used in LOAD_SAMS to reference the appropriate SAM object
-    id = anndata
-    .map { tuple ->
-        def (id, h5ad) = tuple
-        return id
-    }
-    .collect()
-
-    // Grab all h5ad paths, to be used in LOAD_SAMS to reference the appropriate SAM object
-    h5ad = anndata
-    .map { tuple ->
-        def (id, h5ad) = tuple
-        return h5ad
-    }
-    .collect()
-    
-    //Combine into a single channel obj
-    condensedSampleSheet = id
-        .map { ids -> [ ids, h5ad.getVal() ] }
-    condensedSampleSheet
-    condensedSampleSheet.view()
-       
-    // Load SAM objects from the AnnData h5ad files
-    LOAD_SAMS(
-        run_id_ch,
-        condensedSampleSheet
-    )
-    sams = LOAD_SAMS.out.sams
-    
-    // Extract the mappings paths from the ch_samples object, pass as an additional parameter!!!
-    map_dict = ch_samples
-    .map { tuple ->
-        def (meta, h5ad, fasta) = tuple
-        return meta.map_dict
-    }
-    .collect()   
-
-    // Build the SAMap object from the SAM objects and the BLAST maps
-    BUILD_SAMAP(
-        run_id_ch,
-        condensedSampleSheet,
-        maps_dir,
-        sams,
-        map_dict
-    )
-    samap = BUILD_SAMAP.out.samap
-
-    // Run SAMap on the SAMAP object to generate mapping results
-    RUN_SAMAP(
-        run_id_ch,
-        samap
-    )
-    samap_results = RUN_SAMAP.out.results
-
-    // Building channel obj for visualization module
-    anno = ch_samples
-    .map { tuple ->
-        def (meta, h5ad, fasta) = tuple
-        return meta.annotation
-    }
-    .collect()
-
-    annotations = id
-        .map { ids -> [ ids, anno.getVal()] }
-    annotations.view()
-
-    // Visualize the SAMap results
-     VISUALIZE_SAMAP(
-        run_id_ch,
-        samap_results,
-        annotations
-    )
-    
 } 
